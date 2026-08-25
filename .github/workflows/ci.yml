@@ -1,0 +1,126 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: ${{ matrix.compiler }} release
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: gcc
+            cxx: g++
+          - compiler: clang
+            cxx: clang++
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Benchmark smoke test
+        run: |
+          ./build/order_book_benchmark --smoke
+          ./build/itch_replay_benchmark --smoke
+
+  sanitizers:
+    name: clang ASan UBSan LSan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install Ninja and Clang
+        run: sudo apt-get update && sudo apt-get install -y ninja-build clang
+      - name: Configure
+        run: cmake -S . -B build-sanitize -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLOB_ENABLE_SANITIZERS=ON -DCMAKE_CXX_COMPILER=clang++
+      - name: Build
+        run: cmake --build build-sanitize
+      - name: Test with sanitizers and leak detection
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ctest --test-dir build-sanitize --output-on-failure
+
+  fuzz:
+    name: clang libFuzzer 30s smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install Ninja and Clang
+        run: sudo apt-get update && sudo apt-get install -y ninja-build clang
+      - name: Configure
+        run: cmake -S . -B build-fuzz -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLOB_ENABLE_SANITIZERS=ON -DLOB_BUILD_FUZZING=ON -DCMAKE_CXX_COMPILER=clang++
+      - name: Build
+        run: cmake --build build-fuzz
+      - name: Generate golden and malformed seed corpus
+        run: ./build-fuzz/itch_replay_tests --write-fuzz-corpus build-fuzz/fuzz-corpus
+      - name: Fuzz framing, decoder, and permissive replay
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ./build-fuzz/itch_fuzz build-fuzz/fuzz-corpus -max_total_time=30 -timeout=5 -print_final_stats=1
+
+  format:
+    name: clang-format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Check formatting
+        run: cmake --build build --target format-check
+
+  python-round3:
+    name: Python 3.11 research pipeline
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - name: Install uv and create clean locked environment
+        run: |
+          python -m pip install uv==0.12.5
+          cd python
+          uv sync --frozen --all-groups
+      - name: Build the C++ exporter used by integration tests
+        run: |
+          sudo apt-get update && sudo apt-get install -y ninja-build
+          cmake -S . -B build-python -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++
+          cmake --build build-python --target lobforge_replay itch_replay_tests
+          ./build-python/itch_replay_tests --write-full-session build-python/synthetic_full_session.itch
+      - name: Ruff and mypy
+        working-directory: python
+        run: |
+          uv run ruff check src tests
+          uv run ruff format --check src tests
+          uv run mypy src
+      - name: Pytest, Hypothesis, integration, and branch coverage
+        working-directory: python
+        env:
+          LOBFORGE_REPLAY_CLI: ${{ github.workspace }}/build-python/lobforge_replay
+        run: |
+          uv run pytest -q \
+            --cov=lobforge_research.features \
+            --cov=lobforge_research.labels \
+            --cov=lobforge_research.splits \
+            --cov=lobforge_research.microprice \
+            --cov=lobforge_research.evaluation \
+            --cov-branch --cov-report=term-missing --cov-fail-under=90
+      - name: Privacy and repository-scope check
+        run: |
+          ! git ls-files | grep -E '\.(itch|parquet|pcap|joblib|pkl)$'
+          ! git ls-files | grep -E '(^|/)\.venv/|(^|/)artifacts/'

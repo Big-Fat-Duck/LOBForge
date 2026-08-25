@@ -1,0 +1,64 @@
+protocol_version = 1
+random_seed = 20260825
+
+[universe]
+rule = "all requested symbols with complete strict sessions; real-data evaluation requires five symbols selected before final-test access"
+minimum_symbols = 5
+minimum_days = 20
+minimum_symbol_days = 100
+
+[primary_hypothesis]
+feature = "ofi_l1_100ms"
+lookback_ns = 100000000
+target = "target_mid2_delta_clock_100ms"
+horizon_ns = 100000000
+grid_ns = 100000000
+direction = "positive_spearman"
+
+[features]
+set = ["imbalance_l1", "ofi_l1_100ms"]
+ablation_sets = [
+  ["imbalance_l1"],
+  ["weighted_midprice_displacement"],
+  ["stoikov_microprice_displacement"],
+  ["ofi_l1_100ms"],
+  ["imbalance_l1", "ofi_l1_100ms"],
+]
+
+[labels]
+event_horizons = [1, 10, 50, 100]
+clock_grids_ns = [10000000, 100000000, 1000000000]
+
+[split]
+method = "global_chronological_dates"
+train_fraction = 0.70
+validation_fraction = 0.15
+test_fraction = 0.15
+purge_ns = 1000000000
+final_test_evaluations = 1
+
+[model]
+regression = ["zero", "linear", "ridge"]
+classification = ["prior", "majority", "logistic"]
+regularization_c = [0.1, 1.0, 10.0]
+calibration = "chronological_train_tail"
+calibration_fraction = 0.20
+
+[microprice]
+imbalance_bins = 5
+minimum_state_samples = 20
+condition_number_limit = 10000000000.0
+convergence_tolerance = 1e-10
+maximum_iterations = 1000
+smoothing = 0.0
+
+[bootstrap]
+unit = "whole_symbol_day"
+replicates = 1000
+confidence = 0.95
+
+[success]
+test_mean_symbol_day_spearman_min = 0.0
+bootstrap_ci_lower_must_exceed = 0.0
+positive_symbol_day_fraction_min = 0.60
+fdr = 0.05
