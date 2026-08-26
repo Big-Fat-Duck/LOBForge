@@ -15,7 +15,12 @@ import pyarrow.parquet as pq
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt
 
-from .canonical import LogicalDigest, canonical_typed_bytes
+from .canonical import (
+    LogicalDigest,
+    canonical_float_policy,
+    canonical_typed_bytes,
+    canonicalize_floats,
+)
 from .evaluation import (
     classification_metrics,
     decile_response,
@@ -31,7 +36,9 @@ from .synthetic import generate_planted_signal, run_synthetic_controls
 
 def _json(path: Path, value: dict[str, Any]) -> None:
     path.write_text(
-        json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
+        json.dumps(value, allow_nan=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
     )
 
 
@@ -127,32 +134,43 @@ def write_synthetic_report(
         [row[regression_target] for row in split.test],
     )
     microprice = StoikovMicroprice(minimum_state_samples=5).fit(split.train)
-    microprice.save(output / "stoikov_microprice.json")
     model_suite, suite_parameters = evaluate_interpretable_suite(
         split.train, split.validation, split.test, seed=seed
     )
-    model_parameters = {
-        "regression": regressor.parameters(),
-        "classification": classifier.parameters(),
-        "stoikov": microprice.to_dict(),
-        "interpretable_suite": suite_parameters,
-    }
+    stoikov_parameters = canonicalize_floats(
+        {
+            "canonical_float_policy": canonical_float_policy(),
+            **microprice.to_dict(),
+        }
+    )
+    _json(output / "stoikov_microprice.json", stoikov_parameters)
+    model_parameters = canonicalize_floats(
+        {
+            "canonical_float_policy": canonical_float_policy(),
+            "regression": regressor.parameters(),
+            "classification": classifier.parameters(),
+            "stoikov": stoikov_parameters,
+            "interpretable_suite": suite_parameters,
+        }
+    )
     _json(output / "model_parameters.json", model_parameters)
 
     prediction_rows: list[dict[str, Any]] = []
     prediction_digest = LogicalDigest()
     for position, index in enumerate(classification_indices):
         source = split.test[int(index)]
-        row = {
-            "session_date": source["session_date"],
-            "symbol": source["symbol"],
-            "anchor_sequence": source["anchor_sequence"],
-            "truth": int(direction_truth[position]),
-            "prediction": int(class_prediction[position]),
-            "probability_down": float(probabilities_after[position, 0]),
-            "probability_zero": float(probabilities_after[position, 1]),
-            "probability_up": float(probabilities_after[position, 2]),
-        }
+        row = canonicalize_floats(
+            {
+                "session_date": source["session_date"],
+                "symbol": source["symbol"],
+                "anchor_sequence": source["anchor_sequence"],
+                "truth": int(direction_truth[position]),
+                "prediction": int(class_prediction[position]),
+                "probability_down": float(probabilities_after[position, 0]),
+                "probability_zero": float(probabilities_after[position, 1]),
+                "probability_up": float(probabilities_after[position, 2]),
+            }
+        )
         prediction_rows.append(row)
         prediction_digest.update(row)
     prediction_schema = pa.schema(
@@ -165,7 +183,16 @@ def write_synthetic_report(
             pa.field("probability_down", pa.float64(), False),
             pa.field("probability_zero", pa.float64(), False),
             pa.field("probability_up", pa.float64(), False),
-        ]
+        ],
+        metadata={
+            b"lobforge.canonical_float_policy": canonical_float_policy()["name"].encode("ascii"),
+            b"lobforge.canonical_float_significant_digits": str(
+                canonical_float_policy()["significant_digits"]
+            ).encode("ascii"),
+            b"lobforge.probability_sum_absolute_tolerance": canonical_float_policy()[
+                "probability_sum_absolute_tolerance"
+            ].encode("ascii"),
+        },
     )
     pq.write_table(
         pa.Table.from_pylist(prediction_rows, schema=prediction_schema),
@@ -173,35 +200,40 @@ def write_synthetic_report(
         compression="zstd",
         use_dictionary=False,
     )
-    metrics: dict[str, Any] = {
-        "metrics_schema": "lobforge.round3_synthetic_metrics",
-        "version": 1,
-        "seed": seed,
-        "protocol_sha256": protocol_sha256,
-        "split": {
-            "train_dates": split.train_dates,
-            "validation_dates": split.validation_dates,
-            "test_dates": split.test_dates,
-            "purged_rows": split.purged_rows,
-        },
-        "regression": regression_metrics(regression_truth, regression_prediction),
-        "classification": classification_metrics(
-            direction_truth, class_prediction, probabilities_after
-        ),
-        "calibration": {"before": calibration_before, "after": calibration_after},
-        "decile_response": deciles,
-        "controls": controls,
-        "model_suite": model_suite,
-        "prediction_logical_sha256": prediction_digest.hexdigest(),
-        "model_logical_sha256": hashlib.sha256(canonical_typed_bytes(model_parameters)).hexdigest(),
-        "real_data": {
-            "D1": "BLOCKED: DATASET_NOT_PROVIDED",
-            "D2": "BLOCKED",
-            "D3": "BLOCKED",
-            "H1": "BLOCKED",
-        },
-        "scope": "engineering controls only; not evidence of market alpha or profitability",
-    }
+    metrics: dict[str, Any] = canonicalize_floats(
+        {
+            "metrics_schema": "lobforge.round3_synthetic_metrics",
+            "version": 1,
+            "canonical_float_policy": canonical_float_policy(),
+            "seed": seed,
+            "protocol_sha256": protocol_sha256,
+            "split": {
+                "train_dates": split.train_dates,
+                "validation_dates": split.validation_dates,
+                "test_dates": split.test_dates,
+                "purged_rows": split.purged_rows,
+            },
+            "regression": regression_metrics(regression_truth, regression_prediction),
+            "classification": classification_metrics(
+                direction_truth, class_prediction, probabilities_after
+            ),
+            "calibration": {"before": calibration_before, "after": calibration_after},
+            "decile_response": deciles,
+            "controls": controls,
+            "model_suite": model_suite,
+            "prediction_logical_sha256": prediction_digest.hexdigest(),
+            "model_logical_sha256": hashlib.sha256(
+                canonical_typed_bytes(model_parameters)
+            ).hexdigest(),
+            "real_data": {
+                "D1": "BLOCKED: DATASET_NOT_PROVIDED",
+                "D2": "BLOCKED",
+                "D3": "BLOCKED",
+                "H1": "BLOCKED",
+            },
+            "scope": "engineering controls only; not evidence of market alpha or profitability",
+        }
+    )
     _json(output / "metrics.json", metrics)
     _plot_deciles(deciles, output / "decile_response.png")
     _plot_reliability(calibration_after, output / "reliability.png")
@@ -229,6 +261,7 @@ signal, causality, execution quality, or profitability.
     manifest = {
         "artifact_schema": "lobforge.synthetic_report",
         "version": 1,
+        "canonical_float_policy": canonical_float_policy(),
         "seed": seed,
         "protocol_sha256": protocol_sha256,
         "rows_per_symbol_day": rows_per_symbol_day,

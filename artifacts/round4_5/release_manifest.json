@@ -1,7 +1,7 @@
 {
   "audit_summary": {
     "history_absolute_path_findings": 16,
-    "history_blobs_scanned": 174,
+    "history_blobs_scanned": 186,
     "history_secret_findings": 0,
     "index_absolute_path_findings": 0,
     "index_blobs_scanned": 131,
@@ -14,7 +14,7 @@
     "worktree_absolute_path_findings": 0,
     "worktree_secret_findings": 0
   },
-  "canonical_manifest_digest": "c2df7891f7c051cba1eaf4f115a83993023ccfa5d9b856170f2921239c75e25e",
+  "canonical_manifest_digest": "dd0c1cbaa7d03fd08fb3e3c76b550b958e012be59b9e2c5301394f1fa78e07f5",
   "content_assertions": {
     "apache_2_license_text_verified": true,
     "contains_detected_secrets_or_private_data": false,
@@ -27,7 +27,7 @@
     "project_license_spdx": "Apache-2.0"
   },
   "generated_at_excluded_from_canonical_digest": true,
-  "generated_at_utc": "2026-08-26T12:12:24Z",
+  "generated_at_utc": "2026-08-26T12:57:18Z",
   "key_semantic_digests": {
     "round2_factual_book": {
       "digest": "eaa0ddd8309c94c0",
@@ -52,9 +52,9 @@
     "manifest_path": "artifacts/round4_5/release_manifest.json",
     "self_sha256": "excluded_to_avoid_recursive_hashing"
   },
-  "physical_manifest_bytes": 26298,
+  "physical_manifest_bytes": 26299,
   "physical_manifest_bytes_excluded_from_canonical_digest": true,
-  "physical_total_release_bytes": 1324090,
+  "physical_total_release_bytes": 1331153,
   "protocols": {
     "round3": {
       "path": "configs/round3_protocol.toml",
@@ -248,9 +248,9 @@
       "sha256": "f9ba768d72536e96cfb177dbced44c7fafe42d7fd1126c12961a8decfba23aa2"
     },
     {
-      "bytes": 5442,
+      "bytes": 6426,
       "path": "docs/round3_methodology.md",
-      "sha256": "bc3ee508239e9dd2db2f0c3afed998d99a17891f9e6a03fc857500bd1fa2a98d"
+      "sha256": "6ace5faa48f9921797cda36b4c1ba71711f9c0e4140917eb9d36b8de76de1db1"
     },
     {
       "bytes": 6516,
@@ -428,9 +428,9 @@
       "sha256": "b4c9cbe952fe0c9869ff69e5ea160fc519e00c33ab6aa68645298d045bb0bb46"
     },
     {
-      "bytes": 6310,
+      "bytes": 8274,
       "path": "python/src/lobforge_research/canonical.py",
-      "sha256": "34082db519d27443eb1e0c6f5db4b685e41d5bc350ff379a8b7dfcb2a32017c8"
+      "sha256": "e103eaea40a71b63480fa9bc40c7bc2f7466b901f3f284b9badb74826938c4d0"
     },
     {
       "bytes": 5969,
@@ -478,9 +478,9 @@
       "sha256": "c386ee998819646ced7fea0d11e1bfd1c297ee23e898b55f93cf2e6b815382a4"
     },
     {
-      "bytes": 9475,
+      "bytes": 10712,
       "path": "python/src/lobforge_research/reporting.py",
-      "sha256": "e585ae4155885302c312591760ebac40ee88475b5cda0ad3cbf29c6b2901fcf0"
+      "sha256": "428477c7e986d6e6ff3ad85fa3ce8dc2e1eec8e24bd96c89f3476c4d30257c90"
     },
     {
       "bytes": 1522,
@@ -578,9 +578,9 @@
       "sha256": "f986481867f2903fb933bc608407ddc65bfc987f286c2725e8b117b856072d26"
     },
     {
-      "bytes": 4392,
+      "bytes": 7269,
       "path": "python/tests/test_synthetic_integration.py",
-      "sha256": "be37de5214356ec9c373f5dc8ef556ffc9cf0d06a32a02035ddd2b82c42c9ad6"
+      "sha256": "c80d7255ccc9916e723bb5530074649d0597f2a0a71131a49b63a56b969704d1"
     },
     {
       "bytes": 2589,
@@ -724,11 +724,11 @@
     }
   ],
   "release_scope": {
-    "ignored_files_in_worktree": 22672,
+    "ignored_files_in_worktree": 22678,
     "ignored_top_level_counts": {
       ".coverage": 1,
-      ".hypothesis": 22,
-      ".mypy_cache": 4,
+      ".hypothesis": 26,
+      ".mypy_cache": 3,
       ".ruff_cache": 4,
       "artifacts": 10147,
       "build": 25,
@@ -758,7 +758,7 @@
       "build-sanitize": 21,
       "build-sanitize-wsl": 67,
       "order_book_tests.exe": 1,
-      "python": 9678,
+      "python": 9681,
       "tools": 1
     },
     "planned_tracked_files": 131,
@@ -775,7 +775,7 @@
   "schema": "lobforge.release_manifest",
   "summary": {
     "declared_cpp_named_tests": 56,
-    "declared_python_test_functions": 46,
+    "declared_python_test_functions": 47,
     "documentation_files": 32,
     "file_type_statistics": {
       ".cmake": 2,
@@ -796,7 +796,7 @@
     "hashed_release_file_count": 130,
     "planned_release_file_count": 131,
     "registered_ctest_count": 14,
-    "source_bytes_excluding_manifest": 1297792,
+    "source_bytes_excluding_manifest": 1304854,
     "test_source_files": 23
   },
   "version": 1

@@ -20,6 +20,17 @@ partition digests and whole-dataset semantic digest are recorded. Semantic diges
 Arrow logical columns and are independent of Parquet metadata, batch size, temporary directory and
 absolute path.
 
+Generated numerical report artifacts use the versioned `lobforge.significant_decimal/v1` policy at
+the serialization boundary. Fitting, prediction and evaluation retain full binary precision; before
+writing model parameters, metrics or prediction probabilities, finite floats are normalized to eight
+significant decimal digits, negative zero becomes positive zero, and non-finite values are rejected.
+The policy is embedded in JSON manifests, the standalone Stoikov model artifact and Parquet schema
+metadata. Independently normalized three-class probabilities must remain finite, non-negative, agree
+with the stored argmax class and sum to one within the declared absolute tolerance of `3e-8`. That
+conservative tolerance covers the combined decimal rounding and binary64 round-trip of three
+probabilities. The policy removes non-semantic last-bit BLAS/libm differences across supported
+platforms without changing model selection, labels, predicted classes or acceptance decisions.
+
 ## Features and learned micro-price
 
 Static features follow `docs/feature_dictionary.md`. The learned micro-price state is

@@ -11,6 +11,50 @@ from typing import Any
 import numpy as np
 import pyarrow as pa
 
+CANONICAL_FLOAT_POLICY = "lobforge.significant_decimal/v1"
+CANONICAL_FLOAT_SIGNIFICANT_DIGITS = 8
+CANONICAL_PROBABILITY_SUM_ABSOLUTE_TOLERANCE = "3e-8"
+
+
+def canonical_float_policy() -> dict[str, Any]:
+    """Describe the versioned precision used at numerical artifact boundaries."""
+
+    return {
+        "name": CANONICAL_FLOAT_POLICY,
+        "significant_digits": CANONICAL_FLOAT_SIGNIFICANT_DIGITS,
+        "negative_zero": "normalized_to_positive_zero",
+        "non_finite": "rejected",
+        "probability_sum_absolute_tolerance": CANONICAL_PROBABILITY_SUM_ABSOLUTE_TOLERANCE,
+    }
+
+
+def canonicalize_floats(value: Any) -> Any:
+    """Normalize JSON-like numerical artifacts across conforming float libraries.
+
+    Model fitting can differ by a few final binary digits across BLAS and libm
+    implementations. Research artifacts retain eight significant decimal digits,
+    well beyond their statistical precision, so those non-semantic differences do
+    not change serialized values or logical digests.
+    """
+
+    if value is None or isinstance(value, (bool, int, str)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("canonical artifact floats must be finite")
+        normalized = float(format(value, f".{CANONICAL_FLOAT_SIGNIFICANT_DIGITS}g"))
+        return 0.0 if normalized == 0.0 else normalized
+    if isinstance(value, Mapping):
+        normalized_mapping: dict[str, Any] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise TypeError("canonical artifact mapping keys must be strings")
+            normalized_mapping[key] = canonicalize_floats(item)
+        return normalized_mapping
+    if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
+        return [canonicalize_floats(item) for item in value]
+    raise TypeError(f"unsupported canonical artifact type: {type(value).__name__}")
+
 
 def canonical_typed_bytes(value: Any) -> bytes:
     """Encode JSON-like typed values without relying on JSON float formatting."""
