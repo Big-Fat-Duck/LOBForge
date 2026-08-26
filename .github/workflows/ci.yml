@@ -34,6 +34,7 @@ jobs:
         run: |
           ./build/order_book_benchmark --smoke
           ./build/itch_replay_benchmark --smoke
+          ./build/mm_benchmark --events 100000 --runs 1 --warmup 10000
 
   sanitizers:
     name: clang ASan UBSan LSan
@@ -69,7 +70,9 @@ jobs:
         env:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
-        run: ./build-fuzz/itch_fuzz build-fuzz/fuzz-corpus -max_total_time=30 -timeout=5 -print_final_stats=1
+        run: |
+          ./build-fuzz/itch_fuzz build-fuzz/fuzz-corpus -max_total_time=30 -timeout=5 -print_final_stats=1
+          ./build-fuzz/mm_fuzz -max_total_time=30 -timeout=5 -print_final_stats=1
 
   format:
     name: clang-format
@@ -83,8 +86,8 @@ jobs:
       - name: Check formatting
         run: cmake --build build --target format-check
 
-  python-round3:
-    name: Python 3.11 research pipeline
+  python-research:
+    name: Python 3.11 Round 3/4 research and oracle layer
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -100,7 +103,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y ninja-build
           cmake -S . -B build-python -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++
-          cmake --build build-python --target lobforge_replay itch_replay_tests
+          cmake --build build-python --target lobforge_replay lobforge_mm_sim itch_replay_tests
           ./build-python/itch_replay_tests --write-full-session build-python/synthetic_full_session.itch
       - name: Ruff and mypy
         working-directory: python
@@ -119,6 +122,11 @@ jobs:
             --cov=lobforge_research.splits \
             --cov=lobforge_research.microprice \
             --cov=lobforge_research.evaluation \
+            --cov=lobforge_research.round4_oracle \
+            --cov=lobforge_research.round4_evaluation \
+            --cov=lobforge_research.round4_synthetic \
+            --cov=lobforge_research.round4_reporting \
+            --cov=lobforge_research.round4_calibration \
             --cov-branch --cov-report=term-missing --cov-fail-under=90
       - name: Privacy and repository-scope check
         run: |

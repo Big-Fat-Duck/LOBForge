@@ -1,0 +1,104 @@
+[protocol]
+schema_version = 1
+name = "lobforge-round4-primary"
+
+[latency]
+unit = "ns"
+market_data_ns = 100000
+strategy_compute_ns = 50000
+order_entry_ns = 150000
+cancel_ns = 200000
+replace_ns = 250000
+
+[queue]
+primary = "mbo_fifo_conservative"
+sensitivities = ["trade_through_only", "front_of_queue"]
+inside_spread_fills = false
+market_impact = false
+
+[fees]
+unit = "nanodollars_per_share"
+maker_fee_nanos_per_share = 0
+maker_rebate_nanos_per_share = 200000
+liquidation_fee_nanos_per_share = 300000
+
+[quotes]
+quantity = 10
+minimum_rest_ns = 10000000
+refresh_threshold_ticks = 1
+maximum_distance_ticks = 10
+tick_size_price4 = 100
+maximum_active_per_symbol_side = 1
+
+[risk]
+max_absolute_inventory = 100
+max_order_quantity = 25
+max_open_orders = 20
+max_notional_nanos = 1000000000000000
+max_market_staleness_ns = 1000000000
+maximum_loss_nanos = 1000000000000
+maximum_drawdown_nanos = 1000000000000
+stop_new_quotes_before_close_ns = 60000000000
+force_cancel_after_stop = true
+
+[strategy]
+primary = "avellaneda_stoikov"
+automatic = true
+gamma = 0.000001
+sigma_squared = 1.0
+arrival_intensity_k = 0.0101
+symmetric_half_spread_price4 = 100.0
+signal_coefficient_price4 = 50.0
+session_end_ns = 57600000000000
+reference_price = "factual_midpoint"
+bid_rounding = "floor_to_observed_tick"
+ask_rounding = "ceil_to_observed_tick"
+
+[calibration]
+fit_scope = "train"
+validation_refit = false
+test_refit = false
+volatility_rule = "train_only"
+arrival_intensity_rule = "train_only"
+signal_coefficient_rule = "train_only"
+
+[markout]
+horizons_ns = [10000000, 100000000, 1000000000]
+selection = "last_state_at_or_before_fill_plus_horizon"
+directional_sign = "buy_positive_sell_negative"
+
+[terminal]
+rule = "bid_ask_liquidation_with_fees"
+missing_book = "null"
+
+[random]
+seed = 20260826
+
+[split]
+rule = "global_complete_trading_dates_chronological"
+train_fraction = 0.70
+validation_fraction = 0.15
+test_fraction = 0.15
+final_test_evaluations = 1
+
+[purge]
+rule = "maximum_feature_label_markout_horizon"
+maximum_horizon_ns = 1000000000
+
+[schemas]
+shadow_order = "lobforge.shadow_order/v1"
+shadow_fill = "lobforge.shadow_fill/v1"
+inventory_event = "lobforge.inventory_event/v1"
+mm_summary = "lobforge.mm_summary/v1"
+
+[ordering]
+key = ["effective_timestamp_ns", "factual_sequence", "event_category", "local_sequence"]
+timestamp_tie_rule = "all_factual_events_before_local_events"
+
+[output]
+semantic_digest_basis = "canonical_typed_logical_records"
+exclude = ["system_time", "temporary_path", "absolute_path", "filesystem_metadata"]
+
+[evidence]
+synthetic_only_language = "implementation_control_not_market_alpha"
+real_market_required_for_profitability = true

@@ -3,7 +3,7 @@
 *.out
 .idea/
 .vscode/
-/artifacts/
+**/artifacts/
 /reports/tmp/
 python/.venv/
 python/.pytest_cache/
@@ -13,6 +13,12 @@ python/.coverage
 python/htmlcov/
 **/__pycache__/
 *.parquet
+*.itch
+*.pcap
+*.pcapng
+*.npy
+*.npz
 *.joblib
 *.pkl
+*.onnx
 *.tmp

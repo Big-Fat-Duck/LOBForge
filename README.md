@@ -1,7 +1,7 @@
 # LOBForge
 
-LOBForge is a deterministic C++20 market-microstructure foundation with two deliberately separate
-cores. Round 1 is a single-symbol counterfactual matching engine: a caller supplies hypothetical
+LOBForge is a deterministic C++20 market-microstructure foundation with three deliberately separate
+domains. Round 1 is a single-symbol counterfactual matching engine: a caller supplies hypothetical
 commands and receives the executions that local price-time rules would create. Round 2 is a
 field-complete Nasdaq TotalView-ITCH 5.0 decoder and factual historical-feed reconstructor: it
 replays exchange facts without rematching them.
@@ -17,6 +17,12 @@ C++. The replay CLI emits versioned `book_event/v1` NDJSON; the installable
 canonical logical digests, computes microstructure features/labels, and runs leakage-controlled
 interpretable evaluations. NDJSON is an auditable research boundary, not a production feed bus.
 
+Round 4 adds a third, deliberately separate C++20 domain: a deterministic shadow-order simulator.
+It observes the Round 2 factual book read-only, schedules market/compute/order/cancel/replace
+latencies, tracks counterfactual queue position, applies evidence-bounded fills, runs three
+interpretable market-making strategies and maintains exact nanodollar inventory/PnL accounting.
+It never inserts shadow liquidity into the factual book and has no live order-entry capability.
+
 ## Architecture and API
 
 ```text
@@ -30,6 +36,11 @@ Round 2: u16-BE framed bytes -> safe decoder -> typed ITCH facts
 Round 3: Round 2 facts -> book_event/v1 NDJSON -> strict Arrow validation
                                            -> Parquet + semantic manifest
                                            -> features/labels -> chronological evaluation
+
+Round 4: Round 2 facts (read only) -> deterministic latency scheduler
+                                  -> separate shadow lifecycle + queue evidence
+                                  -> risk-gated strategy intent -> exact ledger
+                                  -> versioned audits -> independent Python oracle/report
 ```
 
 Round 1 and Round 2 do not call each other. The reason and exact semantic boundary are recorded in
@@ -197,6 +208,34 @@ The executed million-row measurements are in the
 [Round 3 benchmark report](docs/round3_benchmark.md), and the exact dependency policy is covered by
 the [dependency/license audit](docs/round3_dependency_license_audit.md).
 
+## Round 4 quick start
+
+Run the deterministic end-to-end fixture and analyze its immutable audit artifacts:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+./build/lobforge_mm_sim \
+  --synthetic-fixture primary \
+  --config configs/round4_protocol.toml \
+  --output-dir artifacts/round4_primary
+cd python
+uv run lobforge-research round4-analyze \
+  --input ../artifacts/round4_primary \
+  --output ../artifacts/round4_analysis
+uv run lobforge-research round4-synthetic-report \
+  --output ../artifacts/round4_controls
+```
+
+For a user-supplied lawful ITCH file, replace `--synthetic-fixture primary` with `--input
+<file>`. The architecture/methodology is in [the Round 4 design](docs/round4_architecture.md), queue
+semantics in [ADR 0004](docs/adr/0004-shadow-queue-and-fill-semantics.md), schemas in
+[the audit contract](docs/shadow_audit_v1.md), CLI behavior in [the CLI reference](docs/mm_sim_cli.md),
+the [counterfactual methodology](docs/round4_methodology.md), every formula in
+[the metric dictionary](docs/round4_metrics.md), and the [benchmark evidence](docs/round4_benchmark.md).
+The full evidence and honest
+F1-F3/P1 status are in [the validation report](docs/round4_validation_report.md).
+
 ## Benchmark
 
 Build Release, generate all streams before timing, then run:
@@ -231,12 +270,13 @@ operations. Synthetic fixtures demonstrate deterministic engineering behavior; n
 user-supplied market-data file was available in this workspace, so real-data evidence remains
 `BLOCKED: DATASET_NOT_PROVIDED`. No performance or correctness result is evidence of profitability.
 
-Round 3 also excludes quoting strategies, order generation, counterfactual fills, queue position,
-latency, fees/rebates, inventory, PnL/Sharpe/drawdown, post-fill adverse selection, live protocols,
-broker APIs, paper/live trading, deep learning, dashboards and databases. Its synthetic controls
-show that the research pipeline detects a planted relationship and rejects a null; they do not
-establish a real-market relationship. Real evidence remains independently gated by provenance,
-complete-session replay and the frozen minimum empirical coverage.
+Round 4 now implements offline counterfactual quoting, queue/fill evidence, deterministic latency,
+fees/rebates, inventory, PnL/risk and post-fill markouts. It still excludes market impact,
+counterfactual behavior by other participants, hidden-liquidity inference, live protocols, broker
+APIs, real/paper trading, production operations, deep learning, dashboards and databases. Its
+synthetic controls prove only that the implementation responds to planted mechanics. With no lawful
+real dataset in the workspace, provenance, real counterfactual replay, out-of-sample robustness and
+profitability are all `BLOCKED: DATASET_NOT_PROVIDED`.
 
 ## Worked example
 

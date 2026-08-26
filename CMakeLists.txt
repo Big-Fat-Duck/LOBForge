@@ -50,6 +50,47 @@ else()
   target_compile_options(lobforge_replay PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 endif()
 
+add_library(lob_mm STATIC
+  src/mm/types.cpp
+  src/mm/queue_model.cpp
+  src/mm/accounting.cpp
+  src/mm/strategies.cpp
+  src/mm/protocol.cpp
+  src/mm/audit.cpp
+  src/mm/simulator.cpp
+)
+add_library(lob::mm ALIAS lob_mm)
+target_link_libraries(lob_mm PUBLIC lob::itch)
+target_include_directories(lob_mm PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")
+target_compile_features(lob_mm PUBLIC cxx_std_20)
+if(MSVC)
+  target_compile_options(lob_mm PRIVATE /W4 /permissive- /EHsc)
+else()
+  target_compile_options(lob_mm PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+endif()
+
+add_executable(lobforge_mm_sim apps/lobforge_mm_sim.cpp)
+target_link_libraries(lobforge_mm_sim PRIVATE lob::mm)
+target_compile_features(lobforge_mm_sim PRIVATE cxx_std_20)
+if(MSVC)
+  target_compile_options(lobforge_mm_sim PRIVATE /W4 /permissive- /EHsc)
+else()
+  target_compile_options(lobforge_mm_sim PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+endif()
+
+add_executable(mm_strategy_vectors apps/mm_strategy_vectors.cpp)
+target_link_libraries(mm_strategy_vectors PRIVATE lob::mm)
+target_compile_features(mm_strategy_vectors PRIVATE cxx_std_20)
+if(MSVC)
+  target_compile_options(mm_strategy_vectors PRIVATE /W4 /permissive- /EHsc)
+else()
+  target_compile_options(mm_strategy_vectors PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+endif()
+if(LOB_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(lob_mm PUBLIC -fno-omit-frame-pointer -fsanitize=address,undefined)
+  target_link_options(lob_mm PUBLIC -fno-omit-frame-pointer -fsanitize=address,undefined)
+endif()
+
 if(LOB_BUILD_FUZZING)
   if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     message(FATAL_ERROR "LOB_BUILD_FUZZING requires Clang/libFuzzer")
@@ -59,6 +100,11 @@ if(LOB_BUILD_FUZZING)
   target_compile_features(itch_fuzz PRIVATE cxx_std_20)
   target_compile_options(itch_fuzz PRIVATE -fno-omit-frame-pointer -fsanitize=fuzzer,address,undefined)
   target_link_options(itch_fuzz PRIVATE -fno-omit-frame-pointer -fsanitize=fuzzer,address,undefined)
+  add_executable(mm_fuzz fuzz/mm_fuzz.cpp)
+  target_link_libraries(mm_fuzz PRIVATE lob::mm)
+  target_compile_features(mm_fuzz PRIVATE cxx_std_20)
+  target_compile_options(mm_fuzz PRIVATE -fno-omit-frame-pointer -fsanitize=fuzzer,address,undefined)
+  target_link_options(mm_fuzz PRIVATE -fno-omit-frame-pointer -fsanitize=fuzzer,address,undefined)
 endif()
 
 if(LOB_ENABLE_SANITIZERS)
@@ -98,6 +144,17 @@ if(LOB_BUILD_TESTS)
     target_compile_options(itch_replay_tests PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
   endif()
   add_test(NAME itch_replay_tests COMMAND itch_replay_tests)
+
+  add_executable(mm_tests tests/mm_tests.cpp)
+  target_link_libraries(mm_tests PRIVATE lob::mm)
+  target_compile_features(mm_tests PRIVATE cxx_std_20)
+  target_compile_definitions(mm_tests PRIVATE LOB_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+  if(MSVC)
+    target_compile_options(mm_tests PRIVATE /W4 /permissive- /EHsc)
+  else()
+    target_compile_options(mm_tests PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+  endif()
+  add_test(NAME mm_tests COMMAND mm_tests)
 
   set(LOB_SYNTHETIC_FIXTURE "${CMAKE_CURRENT_BINARY_DIR}/synthetic_full_session.itch")
   set(LOB_FUZZ_CORPUS "${CMAKE_CURRENT_BINARY_DIR}/fuzz-corpus")
@@ -141,6 +198,16 @@ if(LOB_BUILD_TESTS)
       COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/validate_cli_json.py
               $<TARGET_FILE:lobforge_replay> "${LOB_SYNTHETIC_FIXTURE}")
     set_tests_properties(replay_cli_json_valid PROPERTIES FIXTURES_REQUIRED round2_fixture)
+    add_test(NAME mm_strategy_python_oracle_10000
+      COMMAND ${Python3_EXECUTABLE}
+              ${CMAKE_CURRENT_SOURCE_DIR}/python/tests/verify_round4_strategy_oracle.py
+              $<TARGET_FILE:mm_strategy_vectors> --rows 10000)
+    set_tests_properties(mm_strategy_python_oracle_10000 PROPERTIES
+      ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/python/src")
+    add_test(NAME mm_cli_contract
+      COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/validate_mm_cli.py
+              $<TARGET_FILE:lobforge_mm_sim>
+              ${CMAKE_CURRENT_SOURCE_DIR}/configs/round4_protocol.toml)
   endif()
 endif()
 
@@ -166,6 +233,17 @@ if(LOB_BUILD_BENCHMARKS)
   else()
     target_compile_options(itch_replay_benchmark PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
   endif()
+
+  add_executable(mm_benchmark benchmarks/mm_benchmark.cpp)
+  target_link_libraries(mm_benchmark PRIVATE lob::mm)
+  target_compile_features(mm_benchmark PRIVATE cxx_std_20)
+  target_compile_definitions(mm_benchmark PRIVATE
+    LOB_COMPILER_FLAGS="${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_RELEASE}")
+  if(MSVC)
+    target_compile_options(mm_benchmark PRIVATE /W4 /permissive- /EHsc)
+  else()
+    target_compile_options(mm_benchmark PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+  endif()
 endif()
 
 add_custom_target(format-check
@@ -181,6 +259,13 @@ add_custom_target(format-check
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lob/replay/factual_book.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lob/replay/book_event_v1.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lob/replay/replayer.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lob/mm/types.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lob/mm/queue_model.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lob/mm/accounting.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lob/mm/strategies.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lob/mm/protocol.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lob/mm/audit.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lob/mm/simulator.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/order_book.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/itch/decoder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/itch/framed_reader.cpp
@@ -188,14 +273,26 @@ add_custom_target(format-check
     ${CMAKE_CURRENT_SOURCE_DIR}/src/replay/factual_book.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/replay/book_event_v1.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/replay/replayer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/mm/types.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/mm/queue_model.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/mm/accounting.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/mm/strategies.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/mm/protocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/mm/audit.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/mm/simulator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/reference_order_book.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/reference_order_book.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/order_book_tests.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/itch_replay_tests.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/mm_tests.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/order_book_benchmark.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/itch_replay_benchmark.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/mm_benchmark.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/lobforge_replay.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/lobforge_mm_sim.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/mm_strategy_vectors.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/itch_fuzz.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/mm_fuzz.cpp
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   COMMENT "Checking C++ formatting"
 )

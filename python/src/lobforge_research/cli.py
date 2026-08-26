@@ -13,6 +13,7 @@ from .benchmark import benchmark_ndjson_pipeline, benchmark_vectorized_features
 from .errors import ResearchError
 from .ingest import build_dataset, freeze_protocol
 from .reporting import write_synthetic_report
+from .round4_reporting import analyze_round4_artifacts, write_round4_synthetic_report
 
 
 def _default_protocol() -> Path:
@@ -57,6 +58,12 @@ def parser() -> argparse.ArgumentParser:
     pipeline_benchmark.add_argument("--runs", type=int, default=3)
     pipeline_benchmark.add_argument("--batch-rows", type=int, default=65_536)
     pipeline_benchmark.add_argument("--output", type=Path)
+    round4_synthetic = commands.add_parser("round4-synthetic-report")
+    round4_synthetic.add_argument("--output", type=Path, required=True)
+    round4_synthetic.add_argument("--seed", type=int, default=20260826)
+    round4_analysis = commands.add_parser("round4-analyze")
+    round4_analysis.add_argument("--input", type=Path, required=True)
+    round4_analysis.add_argument("--output", type=Path, required=True)
     return root
 
 
@@ -105,6 +112,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sys.stdout.write(text)
             else:
                 arguments.output.write_text(text, encoding="utf-8", newline="\n")
+        elif arguments.command == "round4-synthetic-report":
+            result = write_round4_synthetic_report(arguments.output, seed=arguments.seed)
+            print(json.dumps({"status": result["status"], "seed": result["seed"]}, sort_keys=True))
+        elif arguments.command == "round4-analyze":
+            result = analyze_round4_artifacts(arguments.input, arguments.output)
+            print(result["semantic_digest"])
         return 0
     except ResearchError as error:
         print(str(error), file=sys.stderr)
