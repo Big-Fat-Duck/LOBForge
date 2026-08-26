@@ -205,8 +205,7 @@ int main(int argc, char **argv) {
             << "{\"schema\":\"lobforge.mm_benchmark\",\"version\":1,\"events\":" << options->events
             << ",\"warmup\":" << options->warmup << ",\"runs\":" << options->runs
             << ",\"compiler\":\"" << compiler << "\",\"optimization_flags\":\""
-            << LOB_COMPILER_FLAGS << "\""
-            << ",\"events_per_second_runs\":[";
+            << LOB_COMPILER_FLAGS << "\",\"events_per_second_runs\":[";
   for (std::size_t index = 0; index < throughput.size(); ++index) {
     std::cout << (index == 0 ? "" : ",") << throughput[index];
   }

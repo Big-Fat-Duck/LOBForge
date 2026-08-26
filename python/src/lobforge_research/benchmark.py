@@ -9,7 +9,7 @@ import statistics
 import tempfile
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, cast
 
 import numpy as np
 import pyarrow.json as paj
@@ -19,6 +19,33 @@ from .arrow_ingest import WIRE_SCHEMA, ArrowStreamValidator
 from .canonical import ColumnarLogicalDigest
 from .features import cont_ofi_vectorized, static_features_vectorized
 from .schema import BOOK_EVENT_SCHEMA
+
+
+class _GetCurrentProcess(Protocol):
+    argtypes: list[object]
+    restype: object
+
+    def __call__(self) -> int | None: ...
+
+
+class _GetProcessMemoryInfo(Protocol):
+    argtypes: list[object]
+    restype: object
+
+    def __call__(self, process: int | None, counters: object, size: int) -> int: ...
+
+
+class _Kernel32(Protocol):
+    GetCurrentProcess: _GetCurrentProcess
+
+
+class _Psapi(Protocol):
+    GetProcessMemoryInfo: _GetProcessMemoryInfo
+
+
+class _WindowsLibraries(Protocol):
+    kernel32: _Kernel32
+    psapi: _Psapi
 
 
 def _peak_rss_bytes() -> int | None:
@@ -42,9 +69,13 @@ def _peak_rss_bytes() -> int | None:
 
         counters = ProcessMemoryCounters()
         counters.cb = ctypes.sizeof(counters)
-        get_current_process = ctypes.windll.kernel32.GetCurrentProcess
+        # ``windll`` is intentionally resolved at runtime: it only exists on
+        # Windows, while this module must also type-check and import on POSIX.
+        windows_libraries = cast(_WindowsLibraries, vars(ctypes)["windll"])
+        get_current_process = windows_libraries.kernel32.GetCurrentProcess
+        get_current_process.argtypes = []
         get_current_process.restype = wintypes.HANDLE
-        get_memory_info = ctypes.windll.psapi.GetProcessMemoryInfo
+        get_memory_info = windows_libraries.psapi.GetProcessMemoryInfo
         get_memory_info.argtypes = [
             wintypes.HANDLE,
             ctypes.POINTER(ProcessMemoryCounters),
