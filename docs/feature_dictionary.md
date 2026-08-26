@@ -14,8 +14,8 @@ never used as a missing-value sentinel.
 | `weighted_midprice_displacement` | nullable float64 | `weighted_midprice_l1 - mid2/2` |
 | `ofi_l1_events_10/50/100` | nullable int64 | Sum of the most recent 10/50/100 L1 Cont increments, including the anchor increment |
 | `ofi_l1_10ms/100ms/1s` | nullable int64 | Sum of L1 increments in `(t-window,t]` only |
-| `stoikov_microprice` | nullable float64 | `mid2/2 + g(spread, train-fitted imbalance bin)` |
-| `stoikov_microprice_displacement` | nullable float64 | Learned adjustment `g(state)` |
+| `stoikov_microprice` | nullable float64 | Stoikov-style finite-state first-adjustment estimate: `mid2/2 + g(spread, train-fitted imbalance bin)` |
+| `stoikov_microprice_displacement` | nullable float64 | Train-fitted first adjustment `g(state)` |
 | `stoikov_fallback_reason` | nullable string | Explicit unseen/undersampled/invalid/pathological-state reason |
 
 For best bid/ask `(b,a)` and quantities `(qb,qa)`, the static weighted midpoint obeys
@@ -25,7 +25,8 @@ weighted_midprice_l1 - mid = spread * imbalance_l1 / 2
 ```
 
 and lies within `[b,a]`. It is a static imbalance-weighted midpoint, also called
-`static_microprice_proxy` in explanatory text. It is not the learned Stoikov micro-price. Given
+`static_microprice_proxy` in explanatory text. It is not the train-fitted Stoikov-style
+first-adjustment microprice. Given
 spread, its displacement and L1 imbalance are algebraically collinear, so model code rejects their
 unexplained simultaneous inclusion and the protocol specifies separate ablations.
 

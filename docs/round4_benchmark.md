@@ -7,6 +7,12 @@ The full Round 4 load ran on an AMD Ryzen 7 5800H (16 logical CPUs), WSL2 Linux
 flags `-O3 -DNDEBUG`. The benchmark pre-initializes a valid two-sided factual book, warms 100,000
 events, then performs five independent 1,000,000-event runs.
 
+Reproduction command, run from the repository root after a Release build:
+
+```sh
+./build/mm_benchmark --events 1000000 --runs 5 --warmup 100000
+```
+
 Each timed event follows the production ordering `before_market -> FactualState::apply ->
 after_market`. A symmetric strategy maintains active bid/ask shadow quotes, so the measurement
 includes factual application, scheduler draining, causal snapshots, strategy decisions, lifecycle

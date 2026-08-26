@@ -94,9 +94,12 @@ and build were:
 ```powershell
 cmake -S . -B build-sanitize -G Ninja -DCMAKE_BUILD_TYPE=Debug \
   -DLOB_ENABLE_SANITIZERS=ON \
-  -DCMAKE_CXX_COMPILER="C:\Program Files\JetBrains\CLion 2024.2.2\bin\mingw\bin\g++.exe"
+  -DCMAKE_CXX_COMPILER=g++
 cmake --build build-sanitize
 ```
+
+For that historical attempt, `g++` resolved to the GCC 13.1 executable bundled with the local
+CLion installation. The repository does not depend on that installation path.
 
 The linker evidence was `cannot find -lasan` and `cannot find -lubsan`. This is not an acceptance
 blocker because the supported Clang/Linux ASan+UBSan+LSan run subsequently passed on the final

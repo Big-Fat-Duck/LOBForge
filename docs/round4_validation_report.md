@@ -28,7 +28,7 @@ semantic digest is `49c0a04b17a0de32`.
 | E12 | PASS | Ten runs and chunks 1/1,024/65,536 produce semantic digest `49c0a04b17a0de32`. GCC and Clang audit/protocol/summary files have identical content hashes. Protocol and fixed seed are recorded. |
 | E13 | PASS | 14/14 CTest on three Release builds; Python 65/65; Round 4 aggregate branch coverage 93.89%; Ruff lint/format, strict mypy and C++ format pass. ASan/UBSan/LSan direct suites pass 27/27 + 18/18 + 11/11. The new fuzz target ran 31 s/257,383 executions and ITCH regression fuzz ran 31 s/307,824, with no crash, hang or sanitizer finding. |
 | E14 | PASS | Full active-simulator median is 1,206,313 facts/s, p99 2.9 us and peak RSS 74,252,288 B. Five runs, warm-up, environment and earlier-round medians are recorded in the benchmark report. |
-| E15 | PASS | Architecture/methodology, queue ADR, audit schemas, CLI/config/metric/synthetic/benchmark/validation/license documents and publication checklist exist. Tracked-file privacy, secret, restricted-data, path and artifact scans pass; ignore rules cover generated/private data. No license, visibility, commit or publication action occurred. |
+| E15 | PASS | Architecture/methodology, queue ADR, audit schemas, CLI/config/metric/synthetic/benchmark/validation/license documents and publication checklist exist. Tracked-file privacy, secret, restricted-data, path and artifact scans pass; ignore rules cover generated/private data. During Round 4 validation, no license, visibility, commit or publication action occurred. |
 
 ## Test and reproducibility detail
 

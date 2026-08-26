@@ -18,7 +18,7 @@ The frozen protocol SHA-256 is
 | C1 | PASS | Windows GCC Release and Linux GCC/Clang Release: 11/11 CTest each; Clang ASan/UBSan/LSan: 11/11; libFuzzer 30 s: 169,833 executions, no finding; Round 1/2 performance regressions +6.46%/-4.13%. |
 | C2 | PASS | `book_event/v1` byte-golden, fixed key/LF order, mandatory date/depth, version/date rejection and stdout/stderr integration tests. GCC/Clang exporter bytes matched. |
 | C3 | PASS | Streaming subprocess ingest, scalar and Arrow validators, fixed schemas, atomic directory publication, Parquet partitions, source/protocol/lock digests, stable exit-code negative tests. |
-| C4 | PASS | Exact `mid2`/spread, L1/L5/L10 imbalance and weighted-mid golden/property tests; train-only Stoikov chain analytic, direction, serialization and failure-reason tests. |
+| C4 | PASS | Exact `mid2`/spread, L1/L5/L10 imbalance and weighted-mid golden/property tests; train-only Stoikov-style first-adjustment chain analytic, direction, serialization and failure-reason tests. |
 | C5 | PASS | Cont L1 OFI golden cases, timestamp/sequence/reset/multi-symbol tests and 100,000-state independent scalar oracle comparison. |
 | C6 | PASS | Event 1/10/50/100 and right-continuous clock 10 ms/100 ms/1 s labels; same-timestamp sequence, invalid boundary and half-tick tests. |
 | C7 | PASS | Prefix invariance, future-tail perturbation, feature sequence bound, global-date split, one-second purge, fit-scope and target/future/next/lead denylist tests. |

@@ -4,10 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lobforge-research"
-version = "0.4.0"
+version = "0.4.0rc1"
 description = "Deterministic LOBForge research data and leakage-safe signal validation"
 requires-python = ">=3.11"
-license = {text = "Proprietary"}
+license = "Apache-2.0"
 dependencies = [
   "matplotlib>=3.8,<4",
   "numpy>=1.26,<3",
@@ -21,12 +21,16 @@ lobforge-research = "lobforge_research.cli:main"
 
 [dependency-groups]
 dev = [
+  "hatchling==1.27.0",
   "hypothesis>=6.100,<7",
   "mypy>=1.10,<2",
   "pytest>=8,<10",
   "pytest-cov>=5,<8",
   "ruff==0.15.6",
 ]
+
+[tool.uv]
+build-constraint-dependencies = ["hatchling==1.27.0"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/lobforge_research"]

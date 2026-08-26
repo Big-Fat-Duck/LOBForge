@@ -30,8 +30,11 @@ formed. Row probability error, sample count, reachability through matrix conditi
 number and solve residual are diagnostics. An unseen or undersampled state, singular/ill-conditioned
 system or failed residual check gives null plus a reason. Validation and test call only `transform`.
 
-This is intentionally distinct from the static weighted midpoint. The implementation follows the
-finite-state ideas in Stoikov’s paper and public reference code:
+This is intentionally distinct from the static weighted midpoint. The implementation is an
+independent Stoikov-style finite-state **first-adjustment** estimator: it computes the absorbing
+expectation through the first non-zero midpoint move, but does not claim the public notebook's
+additional repeated-price-move recursion. The paper and public repository were used as conceptual
+references; no notebook code or CSV fixture is included:
 <https://doi.org/10.1080/14697688.2018.1489139> and
 <https://github.com/sstoikov/microprice>.
 

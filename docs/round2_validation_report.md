@@ -39,10 +39,10 @@ ctest --test-dir build-r2-final3-gcc --output-on-failure
 Clang Release in the isolated Ubuntu environment:
 
 ```sh
-cmake -S /mnt/d/LOBForge -B /root/lobforge-r2-release \
+cmake -S . -B build-r2-clang-release \
   -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++
-cmake --build /root/lobforge-r2-release -j2
-ctest --test-dir /root/lobforge-r2-release --output-on-failure
+cmake --build build-r2-clang-release -j2
+ctest --test-dir build-r2-clang-release --output-on-failure
 ```
 
 Both final Release runs produced this CTest result:
@@ -66,13 +66,13 @@ The unchanged Round 1 executable reported:
 Sanitizers and leak detection:
 
 ```sh
-cmake -S /mnt/d/LOBForge -B /root/lobforge-r2-sanitize \
+cmake -S . -B build-r2-sanitize \
   -DCMAKE_BUILD_TYPE=Debug -DLOB_ENABLE_SANITIZERS=ON \
   -DCMAKE_CXX_COMPILER=clang++
-cmake --build /root/lobforge-r2-sanitize -j2
+cmake --build build-r2-sanitize -j2
 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
-ctest --test-dir /root/lobforge-r2-sanitize --output-on-failure
+ctest --test-dir build-r2-sanitize --output-on-failure
 ```
 
 Final result:
@@ -87,15 +87,15 @@ There were zero AddressSanitizer, UndefinedBehaviorSanitizer, or LeakSanitizer f
 Fuzz build and final fresh-corpus campaign:
 
 ```sh
-cmake -S /mnt/d/LOBForge -B /root/lobforge-r2-fuzz \
+cmake -S . -B build-r2-fuzz \
   -DCMAKE_BUILD_TYPE=Debug -DLOB_ENABLE_SANITIZERS=ON \
   -DLOB_BUILD_FUZZING=ON -DCMAKE_CXX_COMPILER=clang++
-cmake --build /root/lobforge-r2-fuzz -j2
-/root/lobforge-r2-fuzz/itch_replay_tests \
-  --write-fuzz-corpus /root/lobforge-r2-fuzz/final-corpus
+cmake --build build-r2-fuzz -j2
+./build-r2-fuzz/itch_replay_tests \
+  --write-fuzz-corpus build-r2-fuzz/final-corpus
 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
-/root/lobforge-r2-fuzz/itch_fuzz /root/lobforge-r2-fuzz/final-corpus \
+./build-r2-fuzz/itch_fuzz build-r2-fuzz/final-corpus \
   -max_total_time=30 -timeout=5 -print_final_stats=1 -verbosity=0
 ```
 
@@ -115,7 +115,7 @@ reported no crash, timeout, ASan, UBSan, or LSan finding.
 Formatting:
 
 ```sh
-cmake --build /root/lobforge-r2-release --target format-check
+cmake --build build-r2-clang-release --target format-check
 ```
 
 ```text

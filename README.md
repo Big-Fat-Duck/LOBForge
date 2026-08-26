@@ -1,147 +1,199 @@
 # LOBForge
 
-LOBForge is a deterministic C++20 market-microstructure foundation with three deliberately separate
-domains. Round 1 is a single-symbol counterfactual matching engine: a caller supplies hypothetical
-commands and receives the executions that local price-time rules would create. Round 2 is a
-field-complete Nasdaq TotalView-ITCH 5.0 decoder and factual historical-feed reconstructor: it
-replays exchange facts without rematching them.
+Deterministic C++20 limit-order-book infrastructure for factual ITCH replay, leakage-controlled
+microstructure research, and offline counterfactual market-making simulation.
 
-Both cores avoid wall-clock input, logging, networking, and hidden concurrency. The Round 2 parser
-uses explicit bounds-checked big-endian reads, integer fixed-point Price(4), typed representations
-for all 23 application messages in the June 11, 2026 specification, and deterministic state
-serialization. File I/O and text/JSON presentation live only in `lobforge_replay`.
+> **Release-candidate status:** engineering Rounds 1–4 are implemented and locally validated on
+> license-safe synthetic fixtures. No lawful real-market dataset is present, so real replay,
+> out-of-sample robustness, alpha and profitability evidence remain
+> `BLOCKED: DATASET_NOT_PROVIDED`. LOBForge is an offline research system, not a production or live
+> trading platform.
 
-Round 3 adds a deterministic Python 3.11 research layer without moving factual authority out of
-C++. The replay CLI emits versioned `book_event/v1` NDJSON; the installable
-`lobforge-research` package validates the stream in bounded batches, writes fixed-schema Parquet and
-canonical logical digests, computes microstructure features/labels, and runs leakage-controlled
-interpretable evaluations. NDJSON is an auditable research boundary, not a production feed bus.
+## Evidence at a glance
 
-Round 4 adds a third, deliberately separate C++20 domain: a deterministic shadow-order simulator.
-It observes the Round 2 factual book read-only, schedules market/compute/order/cancel/replace
-latencies, tracks counterfactual queue position, applies evidence-bounded fills, runs three
-interpretable market-making strategies and maintains exact nanodollar inventory/PnL accounting.
-It never inserts shadow liquidity into the factual book and has no live order-entry capability.
+These are reproducible engineering measurements, not trading-performance claims. The unified
+[claims and evidence index](docs/claims_and_evidence.md) records commands, environments and limits.
 
-## Architecture and API
+| Result | Measurement | Environment and data | Scope |
+|---|---:|---|---|
+| ITCH coverage | 23/23 application message types | C++20; synthetic literal-hex fixtures | June 11, 2026 TotalView-ITCH 5.0 specification |
+| Cross-toolchain regression | 14/14 CTest on Linux GCC, Linux Clang and Windows GCC | Release builds; synthetic fixtures | Round 1–4 registered suite |
+| Python validation | 65/65 pytest; 95.16% branch coverage | CPython 3.11.9; selected ten Round 3/4 core modules | Not whole-repository coverage |
+| Shadow-simulator performance | median 1,612,653.525 facts/s; p99 2.8 us; peak RSS 74,203,136 B | Ryzen 7 5800H, WSL2 (2 logical CPUs), GCC 11.4, `-O3 -DNDEBUG`; synthetic | Fresh Round 4.5 audit; five 1,000,000-event runs |
+| Deterministic audit | `49c0a04b17a0de32` | GCC/Clang and chunk sizes 1/1,024/65,536; synthetic | Round 4 canonical logical content |
 
-```text
-Round 1: Command -> matching policy -> counterfactual events
+The planted inventory-pressure control reduced time-weighted absolute inventory by 81.9%, but that
+number is deliberately excluded from the headline table: it validates implementation response in a
+synthetic scenario and says nothing about real-market strategy quality or profit.
 
-Round 2: u16-BE framed bytes -> safe decoder -> typed ITCH facts
-                                      -> session/reference state
-                                      -> factual displayed book + trade ledger
-                                      -> canonical state + FNV-1a digest
+## Five-minute synthetic quickstart
 
-Round 3: Round 2 facts -> book_event/v1 NDJSON -> strict Arrow validation
-                                           -> Parquet + semantic manifest
-                                           -> features/labels -> chronological evaluation
-
-Round 4: Round 2 facts (read only) -> deterministic latency scheduler
-                                  -> separate shadow lifecycle + queue evidence
-                                  -> risk-gated strategy intent -> exact ledger
-                                  -> versioned audits -> independent Python oracle/report
-```
-
-Round 1 and Round 2 do not call each other. The reason and exact semantic boundary are recorded in
-[ADR 0002](docs/adr/0002-counterfactual-matching-versus-factual-reconstruction.md); the offline
-record envelope and error policy are in [ADR 0003](docs/adr/0003-offline-framing-and-error-policy.md).
-
-`lob::OrderBook::process(const Command&)` dispatches `NewOrder`, `CancelOrder`, `ReduceOrder`, and
-`ReplaceOrder`. Validation happens before book mutation. Accepted aggressive orders walk the best
-opposite-side price first and the oldest order at that price first. The method returns events in the
-exact transition order. Separate monotonic counters provide event sequences and resting-priority
-sequences; caller timestamps are stored as metadata and never decide priority.
-
-The production book contains:
-
-- a descending `std::map` for bids and ascending `std::map` for asks;
-- one `std::list` FIFO per price level, with a checked cached aggregate quantity;
-- an `std::unordered_map<OrderId, IndexEntry>` whose stable list iterator permits direct removal.
-
-The public read-only inspection surface provides best bid/ask, aggregate quantity at a level, top-N
-or full aggregate depth, active order and price-level counts, order remaining quantity/priority/queue
-position, ordered active-order views, a canonical textual snapshot, and an invariant checker. It
-never exposes mutable containers. See [the public headers](include/lob/order_book.hpp) and the
-[semantics ADR](docs/adr/0001-matching-engine-semantics.md).
-
-## Matching and command semantics
-
-- Better prices precede worse prices; resting priority at one price is FIFO by strictly increasing
-  priority sequence.
-- A crossing order always trades at the maker's resting price. Buys cross asks at or below their
-  limit; sells cross bids at or above their limit. Partial maker and taker fills are supported.
-- A GTC limit matches immediately and rests a remainder. IOC matches and emits `Expired` for a
-  remainder. FOK first scans eligible liquidity without mutation; insufficient liquidity produces
-  `Rejected(CannotFullyFill)`. PostOnly rejects with `WouldCross` if it would immediately trade,
-  otherwise it rests. Market orders support IOC and FOK only and never rest.
-- An active duplicate ID is rejected. A zero quantity is rejected. A limit requires a positive
-  price; a market must omit price. Market GTC/PostOnly combinations are rejected. All rejection
-  classifications are the `RejectReason` enum, not strings.
-- Cancel removes the entire remaining quantity. Reduce accepts a positive `reduce_by` strictly less
-  than the remaining quantity; zero, equal, or larger reductions are rejected and never act as a
-  cancel. Unknown IDs for cancel, reduce, and replace are rejected.
-- A same-price replacement with a smaller quantity changes the cached aggregate in place and keeps
-  priority. Same price and same quantity emits an explicit priority-retaining `Replaced` no-op and
-  leaves stored timestamp and priority unchanged. A price change or quantity increase loses
-  priority: after complete validation it atomically removes the old order and acts as a new GTC
-  limit with the same ID and a new priority sequence, potentially trading immediately. Failed
-  validation preserves the original order.
-- A level aggregate that would exceed `UINT64_MAX` is rejected before mutation. FOK availability is
-  accumulated with saturation at the requested quantity, so its scan cannot overflow.
-
-Every command produces observable state-transition events: `Accepted`, `Rejected`, `Trade`,
-`Rested`, `Cancelled`, `Reduced`, `Replaced`, and `Expired`. A trade identifies maker, taker,
-resting price, quantity, aggressive side, and event sequence.
-
-After each command the debug build asserts the invariant checker. The test suite also calls it after
-every deterministic and randomized command. It verifies nonzero orders, bid/ask separation, index
-and container bijection, iterator metadata, cached aggregates, nonempty levels, strict FIFO
-sequences, indexed/reachable counts, and checked aggregate arithmetic.
-
-## Complexity
-
-Let `P` be active price levels, `N` active orders, `L` price levels crossed, `F` makers filled or
-partially filled, and `Q` orders at one level. `unordered_map` bounds below are expected-case; its
-adversarial worst case is `O(N)`.
-
-| Operation | Actual complexity |
-|---|---|
-| Insert a non-crossing resting order | `O(log P)` map lookup/insertion + expected `O(1)` index insertion and `O(1)` FIFO append |
-| Best bid or ask | `O(1)` via `map::begin()` |
-| Cancel after ID lookup | `O(1)` list erase and amortized `O(1)` map iterator erase if the level empties |
-| Reduce after ID lookup | `O(1)` |
-| Match an aggressive order | `O(L + F)` ordered traversal plus expected `O(F)` index erases |
-| Aggregated top-N/full snapshot | `O(min(P, topN))` / `O(P)` |
-| Canonical per-order snapshot or all order views | `O(P + N)` |
-| Queue position for one known order | expected `O(1)` ID lookup + `O(Q)` FIFO walk |
-
-## Build and validate
-
-CMake 3.20+, a C++20 compiler, and Ninja are recommended. On this Windows host the commands used
-the CMake, Ninja, and GCC 13.1 executables bundled with CLion by placing their directories on
-`PATH`; after that setup the project commands are conventional:
+Requirements: CMake 3.20+, Ninja, a C++20 compiler, Python 3.11+ for the research package and
+[`uv`](https://docs.astral.sh/uv/). Run from the repository root on Linux or WSL:
 
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build --output-on-failure
+
+./build/lobforge_mm_sim \
+  --synthetic-fixture primary \
+  --config configs/round4_protocol.toml \
+  --output-dir artifacts/round4_primary
+
+cd python
+uv sync --frozen --all-groups
+uv run lobforge-research round4-analyze \
+  --input ../artifacts/round4_primary \
+  --output ../artifacts/round4_analysis
+uv run lobforge-research round4-synthetic-report \
+  --output ../artifacts/round4_controls
 ```
 
-Generate the license-safe full-session fixture and replay it:
+The generated audits, metrics and figures are local artifacts and are ignored by Git. The fixture
+is deterministic and synthetic; it is not exchange data and its PnL is not real money.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    A[ITCH binary feed] --> B[Bounds-checked C++ decoder]
+    B --> C[Factual order-book replay]
+    C --> D[book_event/v1 research stream]
+    D --> E[Python features, labels and interpretable models]
+    C --> F[Immutable factual state]
+    F --> G[Shadow execution simulator]
+    G --> H[Symmetric / A-S / signal-aware A-S]
+    H --> I[Fills / inventory / PnL / markouts]
+```
+
+The semantic boundary is intentional:
+
+- **Factual reconstruction** applies only events reported by ITCH. It never rematches the feed or
+  inserts hypothetical orders.
+- **Counterfactual matching** in Round 1 answers what a caller-supplied command would execute under
+  local price-time rules.
+- **Shadow execution** in Round 4 observes factual state read-only. Its orders, queue position,
+  fills and accounting live in a separate domain and cannot contaminate the historical book.
+- **Research features** consume the versioned NDJSON boundary. Python does not implement an ITCH
+  parser or a second factual book.
+
+See [ADR 0002](docs/adr/0002-counterfactual-matching-versus-factual-reconstruction.md) and
+[ADR 0004](docs/adr/0004-shadow-queue-and-fill-semantics.md) for the exact separation.
+
+## What is implemented
+
+### Round 1 — deterministic matching engine
+
+- Integer prices and quantities, price-time priority and atomic validation.
+- GTC, IOC, FOK, PostOnly and market-order policies.
+- New, cancel, reduce and replace semantics with checked aggregate arithmetic.
+- A scan-based differential oracle over 100,000 randomized commands.
+
+The public C++ API is in [the order-book header](include/lob/order_book.hpp); exact behavior and
+complexity are in [ADR 0001](docs/adr/0001-matching-engine-semantics.md) and the
+[Round 1 report](docs/round1_report.md).
+
+### Round 2 — safe ITCH 5.0 replay
+
+- Typed, field-complete decoding for all 23 application-message types.
+- Explicit bounds-checked big-endian reads and 48-bit nanoseconds-since-midnight timestamps.
+- Factual multi-symbol displayed book, reference/session state and trade ledger.
+- Strict/permissive error contracts, canonical state serialization and deterministic replay CLI.
+- Versioned `book_event/v1` NDJSON exporter with integer Price(4) values.
+
+The normative matrix is [ITCH coverage](docs/itch50_coverage.md); the CLI and research contracts are
+[replay CLI](docs/replay_cli.md) and [book_event/v1](docs/book_event_v1.md).
+
+### Round 3 — leakage-controlled research pipeline
+
+- Bounded streaming validation from NDJSON to fixed-schema Arrow/Parquet batches.
+- Exact `mid2`, spread, L1/L5/L10 imbalance, weighted midpoint and Cont-style OFI.
+- A train-only Stoikov-style finite-state first-adjustment microprice with explicit failure reasons.
+- Event-time and right-continuous clock-time labels.
+- Global chronological date splits, purge, train-only fitting, calibration and block inference.
+- Positive, null and shuffled synthetic controls; no random row split.
+
+Definitions and limitations are in the [feature dictionary](docs/feature_dictionary.md),
+[methodology](docs/round3_methodology.md) and [leakage audit](docs/round3_leakage_audit.md).
+
+### Round 4 — offline shadow execution
+
+- Deterministic market/compute/order/cancel/replace latency scheduling.
+- FIFO MBO queue evidence plus explicit alternative queue models.
+- Exact nanodollar cash, inventory, fees, realized/unrealized PnL and markout accounting.
+- Risk gating, stop switch and forced cancellation.
+- Symmetric quoting, Avellaneda–Stoikov and signal-aware A-S strategies.
+- Independent Python scalar oracles, planted/null controls and versioned audit streams.
+
+This simulator does not model market impact, hidden liquidity, behavioral response by other
+participants or guaranteed fills. See the [Round 4 architecture](docs/round4_architecture.md),
+[methodology](docs/round4_methodology.md) and [validation report](docs/round4_validation_report.md).
+
+## Technology and platform support
+
+- **C++:** C++20 standard library, CMake and optional Ninja; no third-party runtime library.
+- **Python:** Python 3.11+, NumPy, PyArrow, SciPy, scikit-learn and Matplotlib.
+- **Quality:** CTest, pytest/Hypothesis, branch coverage, Ruff, strict mypy, clang-format,
+  ASan/UBSan/LSan and Clang libFuzzer.
+- **Verified platforms:** Linux/WSL GCC and Clang Release; Windows MinGW GCC Release.
+- **Not claimed:** MSVC validation, macOS validation, hard real-time behavior or production support.
+
+The exact Python graph is in `python/uv.lock`. Third-party origins and licensing constraints are in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Build and test
+
+Linux/WSL GCC:
 
 ```sh
-./build/itch_replay_tests --write-full-session build/synthetic_full_session.itch
-./build/lobforge_replay --input build/synthetic_full_session.itch \
-  --strict --symbol AAPL --top 10 --format text
+cmake -S . -B build-gcc -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++
+cmake --build build-gcc
+ctest --test-dir build-gcc --output-on-failure
 ```
 
-Strict mode is the default. `--permissive` skips only bad records whose complete framing is known;
-an incomplete envelope or payload at EOF remains terminal. See the complete
-[CLI reference](docs/replay_cli.md), [23-type coverage matrix](docs/itch50_coverage.md), and
-[Round 2 validation report](docs/round2_validation_report.md).
+Linux/WSL Clang:
 
-ASan, UBSan, and leak detection are supported with GCC/Clang runtimes. A Linux/WSL example is:
+```sh
+cmake -S . -B build-clang -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++
+cmake --build build-clang
+ctest --test-dir build-clang --output-on-failure
+```
+
+Windows PowerShell with MinGW GCC and Ninja on `PATH`:
+
+```powershell
+cmake -S . -B build-windows -G Ninja `
+  -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++
+cmake --build build-windows
+ctest --test-dir build-windows --output-on-failure
+```
+
+Python validation:
+
+```sh
+cd python
+uv sync --frozen --all-groups
+uv run ruff check src tests
+uv run ruff format --check src tests
+uv run mypy src
+LOBFORGE_REPLAY_CLI=../build/lobforge_replay uv run pytest -q \
+  --cov=lobforge_research.features \
+  --cov=lobforge_research.labels \
+  --cov=lobforge_research.splits \
+  --cov=lobforge_research.microprice \
+  --cov=lobforge_research.evaluation \
+  --cov=lobforge_research.round4_oracle \
+  --cov=lobforge_research.round4_evaluation \
+  --cov=lobforge_research.round4_synthetic \
+  --cov=lobforge_research.round4_reporting \
+  --cov=lobforge_research.round4_calibration \
+  --cov-branch --cov-report=term-missing --cov-fail-under=90
+```
+
+Sanitizer and fuzz examples use Clang on Linux/WSL:
 
 ```sh
 cmake -S . -B build-sanitize -G Ninja \
@@ -151,144 +203,89 @@ cmake --build build-sanitize
 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
 ctest --test-dir build-sanitize --output-on-failure
+
+cmake -S . -B build-fuzz -G Ninja \
+  -DCMAKE_BUILD_TYPE=Debug -DLOB_ENABLE_SANITIZERS=ON \
+  -DLOB_BUILD_FUZZING=ON -DCMAKE_CXX_COMPILER=clang++
+cmake --build build-fuzz
+./build-fuzz/itch_replay_tests --write-fuzz-corpus build-fuzz/fuzz-corpus
+./build-fuzz/itch_fuzz build-fuzz/fuzz-corpus -max_total_time=30 -timeout=5
+./build-fuzz/mm_fuzz -max_total_time=30 -timeout=5
 ```
 
-The current WSL image has no Ninja, so the executed local sanitizer validation omitted `-G Ninja`
-and used CMake's Unix Makefiles. This does not change compiler or sanitizer coverage.
+## Benchmarks
 
-Formatting is pinned by `.clang-format` and can be checked without rewriting files:
-
-```sh
-cmake --build build --target format-check
-```
-
-The dependency-free test executable reports 27 named cases. Its differential case sends 5,000
-commands for each of 20 fixed seeds (100,000 total) through both the production engine and an
-intentionally slow scan-based reference, comparing full events, best prices, aggregate depth,
-active IDs/quantities/priority metadata, and invariants after every command.
-
-## Round 3 quick start
-
-Create the locked Python environment and freeze the preregistered protocol:
-
-```sh
-cd python
-uv sync --frozen --all-groups
-uv run lobforge-research freeze-protocol --protocol ../configs/round3_protocol.toml
-```
-
-Build a dataset through the C++ subprocess boundary:
-
-```sh
-uv run lobforge-research build-dataset \
-  --replay-cli ../build/lobforge_replay \
-  --input session.itch --session-date 2026-08-24 \
-  --output ../artifacts/session_2026-08-24 --depth 10 --batch-rows 65536
-```
-
-Run the license-safe controls, quality gates and full local performance workloads:
-
-```sh
-uv run lobforge-research synthetic-report --output ../artifacts/synthetic_round3
-uv run ruff check src tests
-uv run ruff format --check src tests
-uv run mypy src
-uv run pytest --cov=lobforge_research --cov-branch
-uv run lobforge-research benchmark-features --rows 1000000 --runs 3
-uv run lobforge-research benchmark-pipeline --rows 1000000 --runs 3 --batch-rows 65536
-```
-
-The schema contract is [book_event_v1](docs/book_event_v1.md), feature definitions are in the
-[dictionary](docs/feature_dictionary.md), and the frozen experimental design and leakage evidence
-are in the [methodology](docs/round3_methodology.md) and
-[leakage audit](docs/round3_leakage_audit.md). The
-[Round 3 validation report](docs/round3_validation_report.md) keeps engineering gates separate from
-real-data provenance/coverage and the primary signal status.
-The executed million-row measurements are in the
-[Round 3 benchmark report](docs/round3_benchmark.md), and the exact dependency policy is covered by
-the [dependency/license audit](docs/round3_dependency_license_audit.md).
-
-## Round 4 quick start
-
-Run the deterministic end-to-end fixture and analyze its immutable audit artifacts:
-
-```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-./build/lobforge_mm_sim \
-  --synthetic-fixture primary \
-  --config configs/round4_protocol.toml \
-  --output-dir artifacts/round4_primary
-cd python
-uv run lobforge-research round4-analyze \
-  --input ../artifacts/round4_primary \
-  --output ../artifacts/round4_analysis
-uv run lobforge-research round4-synthetic-report \
-  --output ../artifacts/round4_controls
-```
-
-For a user-supplied lawful ITCH file, replace `--synthetic-fixture primary` with `--input
-<file>`. The architecture/methodology is in [the Round 4 design](docs/round4_architecture.md), queue
-semantics in [ADR 0004](docs/adr/0004-shadow-queue-and-fill-semantics.md), schemas in
-[the audit contract](docs/shadow_audit_v1.md), CLI behavior in [the CLI reference](docs/mm_sim_cli.md),
-the [counterfactual methodology](docs/round4_methodology.md), every formula in
-[the metric dictionary](docs/round4_metrics.md), and the [benchmark evidence](docs/round4_benchmark.md).
-The full evidence and honest
-F1-F3/P1 status are in [the validation report](docs/round4_validation_report.md).
-
-## Benchmark
-
-Build Release, generate all streams before timing, then run:
+Generate inputs before timing, use Release binaries and keep shared-runner CI to smoke workloads:
 
 ```sh
 ./build/order_book_benchmark
+./build/itch_replay_benchmark
+./build/mm_benchmark --events 1000000 --runs 5 --warmup 100000
 ```
 
-The default uses `std::mt19937_64` seed `12648430`, performs 100,000 warm-up commands on a separate
-book, and runs at least 1,000,000 measured commands for each of `add_cancel`, `crossing`, `mixed`,
-and `deep_book`. Throughput uses one
-`steady_clock` interval around the sequential command loop. A second fresh replay samples every
-command with `steady_clock`, sorts nanoseconds, and reports nearest-rank p50/p95/p99. RNG,
-generation, sorting, invariant checking, checksums, and output are outside timed regions. The
-program checks that throughput and latency replays finish at identical canonical snapshots and
-prints a deterministic FNV-1a-derived checksum. `--smoke` uses 10,000 commands for CI without a
-performance threshold; `--commands N` selects another diagnostic count.
+Benchmark programs report deterministic checksums and disclose warm-up, timed work and compiler
+flags. Results are machine-specific; do not compare isolated best runs. Methodology and full run
+vectors are in the [Round 1](docs/round1_report.md), [Round 2](docs/round2_benchmark.md),
+[Round 3](docs/round3_benchmark.md) and [Round 4](docs/round4_benchmark.md) reports.
 
-Measured results and complete environment disclosure are in
-[the Round 1 engineering report](docs/round1_report.md). Shared-runner CI only runs the smoke mode.
+## Documentation map
 
-Round 2's in-memory benchmark is `itch_replay_benchmark`. It measures mixed 23-type decoding,
-decoder-plus-book apply, a deep multi-symbol book, and permissive error handling. Methodology and
-measured results are in [the Round 2 benchmark report](docs/round2_benchmark.md).
+| Area | Primary documents |
+|---|---|
+| Semantics and boundaries | [ADR index](docs/adr/0001-matching-engine-semantics.md), [factual vs counterfactual](docs/adr/0002-counterfactual-matching-versus-factual-reconstruction.md) |
+| ITCH replay | [coverage](docs/itch50_coverage.md), [CLI](docs/replay_cli.md), [Round 2 validation](docs/round2_validation_report.md) |
+| Research data | [book_event/v1](docs/book_event_v1.md), [features](docs/feature_dictionary.md), [Round 3 validation](docs/round3_validation_report.md) |
+| Shadow simulation | [architecture](docs/round4_architecture.md), [audit schemas](docs/shadow_audit_v1.md), [metrics](docs/round4_metrics.md), [Round 4 validation](docs/round4_validation_report.md) |
+| Public release | [claims/evidence](docs/claims_and_evidence.md), [release audit](docs/round4_5_release_audit.md), [release runbook](docs/public_release_runbook.md) |
 
-## Limitations / not production trading
+## Data, privacy and security policy
 
-Round 2 is an offline application-message replayer, not an exchange client or trading system. It
-does not implement SoupBinTCP, MoldUDP64, GLIMPSE, packet capture, gap recovery, compression, live
-sockets, order entry, Python bindings, strategies, risk controls, persistence, a GUI, or production
-operations. Synthetic fixtures demonstrate deterministic engineering behavior; no official or
-user-supplied market-data file was available in this workspace, so real-data evidence remains
-`BLOCKED: DATASET_NOT_PROVIDED`. No performance or correctness result is evidence of profitability.
+- No real or licensed market-data file is committed. The repository contains only small,
+  explicitly synthetic or literal golden fixtures.
+- Raw ITCH, DBN, PCAP, Parquet, Arrow, Feather, model and local-environment outputs are ignored.
+- The release audit scans the worktree and all local Git blobs, including reachable and
+  unreachable objects, without printing matched secret text; it also validates Markdown links and
+  produces a logical release manifest.
+- Generated datasets, reports, models, virtual environments and benchmark outputs remain local.
+- Users are responsible for data-provider licenses, provenance, retention and permitted research
+  use before supplying their own data.
 
-Round 4 now implements offline counterfactual quoting, queue/fill evidence, deterministic latency,
-fees/rebates, inventory, PnL/risk and post-fill markouts. It still excludes market impact,
-counterfactual behavior by other participants, hidden-liquidity inference, live protocols, broker
-APIs, real/paper trading, production operations, deep learning, dashboards and databases. Its
-synthetic controls prove only that the implementation responds to planted mechanics. With no lawful
-real dataset in the workspace, provenance, real counterfactual replay, out-of-sample robustness and
-profitability are all `BLOCKED: DATASET_NOT_PROVIDED`.
+Reproduce the local public-release check with:
 
-## Worked example
+```sh
+python tools/release_audit.py --manifest artifacts/round4_5/release_manifest.json \
+  --no-write --verify-existing
+```
 
-With one-cent ticks, submit these GTC limit orders in order:
+## Limitations and non-claims
 
-1. Sell ID 1: 100 shares at `10002` ($100.02) → `Accepted`, then `Rested(100)`.
-2. Sell ID 2: 50 shares at `10002` ($100.02) → `Accepted`, then `Rested(50)`.
-3. Sell ID 3: 100 shares at `10003` ($100.03) → `Accepted`, then `Rested(100)`.
-4. Buy ID 4: 180 shares at `10003` ($100.03) → `Accepted`, then these trades:
-   `maker=1, taker=4, price=10002, qty=100`; `maker=2, taker=4, price=10002, qty=50`;
-   `maker=3, taker=4, price=10003, qty=30`.
+LOBForge does **not** provide live feeds, SoupBinTCP/MoldUDP64 gap recovery, broker or exchange order
+entry, queue guarantees, market-impact estimation, paper/live trading, deployment operations or
+production monitoring. The research layer does not establish NBBO validity, causal alpha,
+execution feasibility or risk-adjusted returns. Negative metrics are valid outcomes and are not
+retuned away.
 
-The execution demonstrates lower ask price first, FIFO between IDs 1 and 2, maker-price execution,
-a multi-level sweep, and a partial maker fill. ID 4 is fully filled. The final book has no bids and
-one ask: ID 3 with 70 shares remaining at `10003` ($100.03).
+Current real-data status is intentionally separate from engineering validation:
+
+| Evidence gate | Status |
+|---|---|
+| F1 — real-data provenance | `BLOCKED: DATASET_NOT_PROVIDED` |
+| F2 — real counterfactual replay | `BLOCKED: DATASET_NOT_PROVIDED` |
+| F3 — out-of-sample robustness | `BLOCKED: DATASET_NOT_PROVIDED` |
+| P1 — profitability evidence | `BLOCKED: DATASET_NOT_PROVIDED` |
+
+## License
+
+LOBForge is licensed under the [Apache License 2.0](LICENSE), with
+`Copyright 2026 Haoxiang Sang` recorded in [NOTICE](NOTICE). Third-party dependencies and research
+references retain their own terms; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The license
+does not change the project's real-data, profitability, production-readiness or live-trading
+evidence boundaries.
+
+## Round 5 roadmap
+
+Round 5 is limited to lawful real-data evidence: provenance verification, complete-session replay,
+pre-registered date/symbol coverage and one-time out-of-sample evaluation. It does not relax the
+engineering/empirical/profitability separation and does not add live trading. See the
+[public-release runbook](docs/public_release_runbook.md) for steps that must occur before any public
+visibility change.

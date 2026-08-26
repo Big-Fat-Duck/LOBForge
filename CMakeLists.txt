@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(lobforge VERSION 0.1.0 LANGUAGES CXX)
+project(lobforge VERSION 0.4.0 LANGUAGES CXX)
 
 option(LOB_BUILD_TESTS "Build the correctness test suite" ON)
 option(LOB_BUILD_BENCHMARKS "Build the reproducible benchmark" ON)
@@ -192,23 +192,21 @@ if(LOB_BUILD_TESTS)
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_cli_exit.cmake)
   set_tests_properties(replay_cli_research_usage_exit PROPERTIES FIXTURES_REQUIRED round2_fixture)
 
-  find_package(Python3 COMPONENTS Interpreter QUIET)
-  if(Python3_Interpreter_FOUND)
-    add_test(NAME replay_cli_json_valid
-      COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/validate_cli_json.py
-              $<TARGET_FILE:lobforge_replay> "${LOB_SYNTHETIC_FIXTURE}")
-    set_tests_properties(replay_cli_json_valid PROPERTIES FIXTURES_REQUIRED round2_fixture)
-    add_test(NAME mm_strategy_python_oracle_10000
-      COMMAND ${Python3_EXECUTABLE}
-              ${CMAKE_CURRENT_SOURCE_DIR}/python/tests/verify_round4_strategy_oracle.py
-              $<TARGET_FILE:mm_strategy_vectors> --rows 10000)
-    set_tests_properties(mm_strategy_python_oracle_10000 PROPERTIES
-      ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/python/src")
-    add_test(NAME mm_cli_contract
-      COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/validate_mm_cli.py
-              $<TARGET_FILE:lobforge_mm_sim>
-              ${CMAKE_CURRENT_SOURCE_DIR}/configs/round4_protocol.toml)
-  endif()
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  add_test(NAME replay_cli_json_valid
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/validate_cli_json.py
+            $<TARGET_FILE:lobforge_replay> "${LOB_SYNTHETIC_FIXTURE}")
+  set_tests_properties(replay_cli_json_valid PROPERTIES FIXTURES_REQUIRED round2_fixture)
+  add_test(NAME mm_strategy_python_oracle_10000
+    COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/python/tests/verify_round4_strategy_oracle.py
+            $<TARGET_FILE:mm_strategy_vectors> --rows 10000)
+  set_tests_properties(mm_strategy_python_oracle_10000 PROPERTIES
+    ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/python/src")
+  add_test(NAME mm_cli_contract
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/validate_mm_cli.py
+            $<TARGET_FILE:lobforge_mm_sim>
+            ${CMAKE_CURRENT_SOURCE_DIR}/configs/round4_protocol.toml)
 endif()
 
 if(LOB_BUILD_BENCHMARKS)
